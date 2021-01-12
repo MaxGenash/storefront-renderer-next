@@ -1,0 +1,50 @@
+{
+  "parserOptions": {
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "impliedStrict": true
+    }
+  },
+  "plugins": ["node", "prettier"],
+  "extends": [
+    "eslint:recommended",
+    "airbnb-base",
+    "plugin:node/recommended",
+    "prettier",
+    "plugin:prettier/recommended"
+  ],
+  "env": {
+    "es2020": true,
+    "node": true
+  },
+  "rules": {
+    /////////////////////////////////////////  Our rules  /////////////////////////////////////////
+    "no-eq-null": "error",
+
+    /////////////////////////////////////////  Overrides   ////////////////////////////////////////
+    "prettier/prettier": "warn",
+    "no-console": "off",
+    "class-methods-use-this": "off",
+    "no-continue": "off",
+    // Overwrites airbnb-base because our Node version doesn't allow to use private properies syntax yet, so we use underscores
+    "no-underscore-dangle": ["error", { "allowAfterThis": true }],
+    // Overwrites airbnb-base to allow for..of:
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "ForInStatement",
+        "message": "for..in loops iterate over the entire prototype chain, which is virtually never what you want. Use Object.{keys,values,entries}, and iterate over the resulting array."
+      },
+      {
+        "selector": "LabeledStatement",
+        "message": "Labels are a form of GOTO; using them makes code confusing and hard to maintain and understand."
+      },
+      {
+        "selector": "WithStatement",
+        "message": "`with` is disallowed in strict mode because it makes code impossible to predict and optimize."
+      }
+    ],
+    // Overwrites airbnb-base because woks badly with prettier making multyline strings ugly
+    "prefer-template": "off"
+  }
+}
