@@ -1,16 +1,29 @@
-/* eslint-disable no-process-exit,global-require,import/no-dynamic-require */
+/* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle */
 const path = require('path');
 const http = require('http');
+const { createRequire } = require('module');
 // const { parse } = require('url')
 const fs = require('fs');
 const vm = require('vm');
 
 const PARSING_TIMEOUT = 1000;
 const EXECUTION_TIMEOUT = 5000;
+const NEXT_SERVER_FILE_PATH = require.resolve('./src/nextServer.js');
+
+console.log('running index:');
+console.log('  process.cwd() =', process.cwd());
+console.log('  __dirname =', __dirname);
+console.log('  __filename =', __filename);
+console.log('  module.children =', module.children);
+console.log('  module.filename =', module.filename);
+console.log('  module.id =', module.id);
+console.log('  module.path =', module.path);
 
 async function getNextServerScript() {
     try {
-        const src = await fs.promises.readFile('./src/nextServer.js', 'utf8');
+        const src = await fs.promises.readFile(NEXT_SERVER_FILE_PATH, 'utf8');
+        // const scopedSrc = "'use strict';\nrendererApi => {\n" + src + '\n};';
+
         return new vm.Script(src, { timeout: PARSING_TIMEOUT });
     } catch (e) {
         console.dir(e);
@@ -19,11 +32,16 @@ async function getNextServerScript() {
     }
 }
 
-const addImportChecking = (fn /* , processDir */) => (...args) => {
+const withImportChecking = (fn, activeThemeDir) => (...args) => {
     // args[0] - file path
-    // if (args[0].includes('/')) {
-    //   args[0] = path.resolve(processDir, args[0]);
-    // }
+
+    // Here we can download the required files from Cloud Storage
+
+    // We need to resolve directories because the running next.js server
+    // doesn't know which themeId its handling and correspondingly where the theme files are located
+    if (activeThemeDir && args[0].includes('/')) {
+        args[0] = path.resolve(activeThemeDir, args[0]);
+    }
 
     let fileSize;
     try {
@@ -36,76 +54,73 @@ const addImportChecking = (fn /* , processDir */) => (...args) => {
 };
 
 async function buildScriptContext(storeId) {
-    const processDir = path.resolve(process.cwd(), `./themes/${storeId}/`);
+    const activeThemeDir = path.resolve(process.cwd(), `./themes/${storeId}/`);
 
-    // TODO: addObject.freeze to everything to avoid hacking
+    // TODO: add Object.freeze to the provided context fields to avoid hacking
 
-    const fsMock = {
-        ...fs,
-        createReadStream: addImportChecking(fs.createReadStream, processDir),
-        read: addImportChecking(fs.read, processDir),
-        readSync: addImportChecking(fs.readSync, processDir),
-        readdir: addImportChecking(fs.readdir, processDir),
-        readdirSync: addImportChecking(fs.readdirSync, processDir),
-        readFile: addImportChecking(fs.readFile, processDir),
-        readFileSync: addImportChecking(fs.readFileSync, processDir),
-        readlink: addImportChecking(fs.readlink, processDir),
-        readlinkSync: addImportChecking(fs.readlinkSync, processDir),
-        readv: addImportChecking(fs.readv, processDir),
-        readvSync: addImportChecking(fs.readvSync, processDir),
-        promises: {
-            ...fs.promises,
-            read: addImportChecking(fs.promises.read, processDir),
-            readFile: addImportChecking(fs.promises.readFile, processDir),
-            readdir: addImportChecking(fs.promises.readdir, processDir),
-            readlink: addImportChecking(fs.promises.readlink, processDir),
+    const mocks = {
+        fs: {
+            ...fs,
+            createReadStream: withImportChecking(fs.createReadStream, activeThemeDir),
+            read: withImportChecking(fs.read, activeThemeDir),
+            readSync: withImportChecking(fs.readSync, activeThemeDir),
+            readdir: withImportChecking(fs.readdir, activeThemeDir),
+            readdirSync: withImportChecking(fs.readdirSync, activeThemeDir),
+            readFile: withImportChecking(fs.readFile, activeThemeDir),
+            readFileSync: withImportChecking(fs.readFileSync, activeThemeDir),
+            readlink: withImportChecking(fs.readlink, activeThemeDir),
+            readlinkSync: withImportChecking(fs.readlinkSync, activeThemeDir),
+            readv: withImportChecking(fs.readv, activeThemeDir),
+            readvSync: withImportChecking(fs.readvSync, activeThemeDir),
+            promises: {
+                ...fs.promises,
+                read: withImportChecking(fs.promises.read, activeThemeDir),
+                readFile: withImportChecking(fs.promises.readFile, activeThemeDir),
+                readdir: withImportChecking(fs.promises.readdir, activeThemeDir),
+                readlink: withImportChecking(fs.promises.readlink, activeThemeDir),
+            },
+        },
+        process: {
+            ...process,
+            cwd: () => activeThemeDir,
+            chdir: () => {
+                throw new Error('chdir is restricted');
+            },
+        },
+        path: {
+            ...path,
+            resolve: (...paths) => {
+                const result = path.join(activeThemeDir, ...paths);
+                // console.log('activeThemeDir =', activeThemeDir);
+                // console.log('called path.resolve with', paths, '. Result =', result);
+                return result;
+            },
         },
     };
 
-    const processMock = {
-        ...process,
-        cwd: () => processDir,
-        chdir: () => {
-            throw new Error('chdir is restricted');
-        },
-    };
-
-    const pathMock = {
-        ...path,
-        resolve: (...paths) => {
-            const result = path.join(processDir, ...paths);
-            // console.log('processDir =', processDir);
-            // console.log('called path.resolve with', paths, '. Result =', result);
-            return result;
-        },
-    };
-
+    const newRequire = createRequire(NEXT_SERVER_FILE_PATH);
     const context = {
         ...global,
-        module: {},
         console,
+        module: newRequire('module'),
         require: (name) => {
             console.log(`called require("${name}")`);
-            if (name === 'fs') {
-                return fsMock;
-            }
-            if (name === 'path') {
-                return pathMock;
-            }
-            if (name === 'process') {
-                return processMock;
+            if (mocks[name]) {
+                return mocks[name];
             }
             if (name.includes('.next') || name.includes('public')) {
-                return addImportChecking(require);
+                return withImportChecking(newRequire);
             }
-            return require(name);
+            return newRequire(name);
         },
         rendererApi: {
             storeId,
         },
-        __dirname: processDir,
-        process: processMock,
+        __dirname: activeThemeDir,
+        __filename: path.join(activeThemeDir, './nextServer.js'),
+        process: mocks.process,
     };
+    context.module.require = context.require;
 
     context.global = context;
     return vm.createContext(context);
@@ -125,9 +140,11 @@ async function run() {
                 timeout: EXECUTION_TIMEOUT,
                 filename: 'nextServer.js',
             });
-            await isolatedNextServer(req, res);
+            await isolatedNextServer(/* (sandbox.rendererApi) */ req, res);
             // const exported = sandbox.module.exports;
             // console.dir({ exported });
+
+            // TODO: remove the theme files after the request is handled to avoid running out of memory
         } catch (e) {
             console.dir(e);
             console.log('Execution timeout');
