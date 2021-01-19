@@ -4,7 +4,6 @@ const path = require('path');
 const fs = require('fs');
 const { NEXT_SERVER_FILE_PATH } = require('./constants');
 const { PARSING_TIMEOUT } = require('./constants');
-const { getActiveThemeDir } = require('./FsUtils');
 
 function buildMocks(extraMocks) {
     // TODO: mock everything that can lead to stealing / modifying data of other themes

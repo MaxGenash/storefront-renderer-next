@@ -1,11 +1,11 @@
 /* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus */
 // const { v4: generateId } = require('uuid');
 const http = require('http');
-// const { NEXT_SERVER_FILE_PATH } = require("./src/constants");
+// const { NEXT_SERVER_FILE_PATH } = require('./src/constants');
 const { EXECUTION_TIMEOUT } = require('./src/constants');
 const { getStoreId, getNextConfig } = require('./src/nextServerUtils');
 const { buildMocks, getNextServerScript, buildScriptContext } = require('./src/vmUtils');
-const { getActiveThemeDir, overrideFs, overrideRequires } = require('./src/FsUtils');
+const FsUtils = require('./src/FsUtils');
 
 console.log('running index. process.cwd() =', process.cwd());
 // console.log('  __dirname =', __dirname);
@@ -18,16 +18,9 @@ console.log('running index. process.cwd() =', process.cwd());
 async function run() {
     const nextServerScript = await getNextServerScript();
 
-    const overriddenFs = overrideFs();
-    const overriddenModules = buildMocks({
-        fs: overriddenFs,
-    });
-    overrideRequires(overriddenModules);
-    const overriddenGlobals = {
-        require,
-    };
-
     let reqIdsCounter = 0;
+    let originalFs;
+    let originalRequire;
     const httpServer = new http.Server(async (req, res) => {
         const reqId = ++reqIdsCounter;
         console.log(`\n[${reqId}] req.url = `, req.url);
@@ -36,13 +29,25 @@ async function run() {
             const storeId = getStoreId(req);
             console.log(`storeId: "${storeId}"`);
 
+            const fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire);
+            const overriddenFs = fsUtils.overrideFs();
+            originalFs = fsUtils.originalFs;
+            const overriddenModules = buildMocks({
+                fs: overriddenFs,
+            });
+            fsUtils.overrideRequires(overriddenModules);
+            originalRequire = fsUtils.originalRequire;
+            const overriddenGlobals = {
+                require,
+            };
+
             const context = await buildScriptContext(overriddenModules, overriddenGlobals);
             const isolatedNextServer = nextServerScript.runInNewContext(context, {
                 timeout: EXECUTION_TIMEOUT,
                 filename: 'nextServer.js',
             });
             // const isolatedNextServer = require(NEXT_SERVER_FILE_PATH);
-            const activeDir = getActiveThemeDir(storeId);
+            const activeDir = fsUtils.getActiveThemeDir();
             const nextConfig = await getNextConfig(activeDir);
             await isolatedNextServer({ activeDir, reqId, nextConfig })(req, res);
 
