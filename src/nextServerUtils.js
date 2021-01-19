@@ -2,9 +2,9 @@
 const path = require('path');
 
 function getStoreId(req) {
-    const storeId = req.headers['x-bc-storeid'];
+    const storeId = req.headers['x-bc-store-id'];
     if (!storeId) {
-        throw new Error('Empty storeId in headers');
+        throw new Error('Empty x-bc-store-id in headers');
     }
     return storeId;
 }

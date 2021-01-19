@@ -12,15 +12,16 @@ class FsUtils {
         this.originalRequire = originalRequire;
         this.overridenRequire = Module.prototype.require;
         this.isFsOverriden = false;
+        this.relativeActiveThemeDir = `themes/tmp/${this.reqId}/`;
+        this.relativeSrcThemeDir = `themes/${this.storeId}/`;
     }
 
     getActiveThemeDir() {
-        // return path.resolve(process.cwd(), `./themes/tmp/${this.reqId}/`);
-        return path.resolve(process.cwd(), `./themes/${this.storeId}/`);
+        return path.resolve(process.cwd(), this.relativeActiveThemeDir);
     }
 
     getSrcThemeDir() {
-        return path.resolve(process.cwd(), `./themes/${this.storeId}/`);
+        return path.resolve(process.cwd(), this.relativeSrcThemeDir);
     }
 
     withReadsChecking(fn, fnName = fn && fn.name) {
@@ -30,19 +31,40 @@ class FsUtils {
             const filePath = args[0] && args[0].toString();
 
             // Here we can download the required files from Cloud Storage
+            if (filePath && filePath.includes(fsUtils.relativeActiveThemeDir)) {
+                const srcFilePath = filePath.replace(
+                    fsUtils.relativeActiveThemeDir,
+                    fsUtils.relativeSrcThemeDir,
+                );
+                // console.log('filePath = ', filePath);
+                // console.log('srcFilePath = ', srcFilePath);
+                if (
+                    !fsUtils.originalFs.existsSync(filePath) &&
+                    fsUtils.originalFs.existsSync(srcFilePath)
+                ) {
+                    const fileParentDir = path.dirname(filePath);
+                    if (!fsUtils.originalFs.existsSync(fileParentDir)) {
+                        fsUtils.originalFs.mkdirSync(fileParentDir, { recursive: true });
+                    }
+                    try {
+                        fsUtils.originalFs.copyFileSync(srcFilePath, filePath);
+                    } catch (err) {
+                        console.error(err);
+                    }
+                }
 
-            if (filePath && !filePath.includes('node_modules') && filePath.includes('themes')) {
                 let fileSize = 0;
                 try {
-                    fileSize = (fs.statSync(filePath).size / 1024).toFixed(2);
+                    fileSize = (fs.statSync(srcFilePath).size / 1024).toFixed(2);
                     // eslint-disable-next-line no-empty
                 } catch (_) {}
 
                 console.log(
+                    // eslint-disable-next-line prettier/prettier
                     `[${fsUtils.reqId}] called ${fnName}("${filePath}", ...). FileSize (${fileSize || 'N/A'} Kb)`,
                 );
-                // console.trace();
             }
+
             return fn(...args);
         };
     }
@@ -68,6 +90,7 @@ class FsUtils {
                 // } catch (_) {}
 
                 console.log(
+                    // eslint-disable-next-line prettier/prettier
                     `[${fsUtils.reqId}] called ${fnName}("${filePath}", ...). FileSize (${fileSize || 'N/A'} Kb)`,
                 );
                 // console.trace();
@@ -84,6 +107,12 @@ class FsUtils {
 
             if (mocks[name]) {
                 return mocks[name];
+            }
+            if (
+                this.path.includes(fsUtils.relativeActiveThemeDir) &&
+                (name.startsWith('./') || name.startsWith('../'))
+            ) {
+                args[0] = path.resolve(this.path, name);
             }
 
             return fsUtils.withReadsChecking(
