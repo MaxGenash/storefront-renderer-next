@@ -6,24 +6,24 @@ const { PARSING_TIMEOUT } = require('./constants');
 
 // class VmUtils {
 
-function buildMocks(extraMocks) {
+function buildMocks(extraMocks, activeThemeDir) {
     // TODO: mock everything that can lead to stealing / modifying data of other themes
     return {
         process: {
             ...process,
-            // cwd: () => activeThemeDir,
+            cwd: () => activeThemeDir,
             chdir: () => {
                 throw new Error('chdir is restricted');
             },
         },
         path: {
             ...path,
-            // resolve: (...paths) => {
-            //     // const result = path.join(activeThemeDir, ...paths);
-            //     // console.log('activeThemeDir =');
-            //     // console.log('called path.resolve with', paths, '. Result =', result);
-            //     return result;
-            // },
+            resolve: (...paths) => {
+                const result = path.join(activeThemeDir, ...paths);
+                // console.log('activeThemeDir =');
+                // console.log('called path.resolve with', paths, '. Result =', result);
+                return result;
+            },
         },
         ...extraMocks,
     };
@@ -36,7 +36,7 @@ async function getVmScript(file) {
 
         return new vm.Script(src, { timeout: PARSING_TIMEOUT });
     } catch (e) {
-        console.dir(e);
+        console.error(e);
         process.exit(1);
     }
 }
@@ -50,9 +50,12 @@ async function buildScriptContext(modules, globals) {
         // ...global,
         console,
         // __dirname: activeThemeDir,
-        // __filename: path.join(activeThemeDir, './nextServer.js'),
         module: {},
         process: modules.process,
+        Buffer,
+        URL,
+        clearTimeout,
+        setTimeout,
         ...globals,
     };
     // context.module.require = context.require;

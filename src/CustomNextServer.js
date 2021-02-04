@@ -3,6 +3,7 @@
 const process = require('process');
 const path = require('path');
 const fs = require('fs');
+const { EXECUTION_TIMEOUT } = require('./constants');
 
 // const createNextServer = require('next');
 // const { loadComponents } = require('next/dist/next-server/server/load-components.js');
@@ -60,19 +61,17 @@ class CustomNextServer {
         const fullFilePath = path.resolve(this.activeDir, './_next/serverless/', relativeFilePath);
 
         try {
-            const routeHandler = require(fullFilePath);
-            // TODO: isolate
-
-            // const isolatedScript = await this.vmUtils.getVmScript(filePath);
-            // isolatedScript.runInNewContext(this.vmUtils.context, {
-            //     timeout: EXECUTION_TIMEOUT,
-            //     filename: filePath,
-            // });
+            // const routeHandler = require(fullFilePath);
+            const isolatedScript = await this.vmUtils.getVmScript(fullFilePath);
+            const routeHandler = await isolatedScript.runInNewContext(this.vmUtils.context, {
+                timeout: EXECUTION_TIMEOUT,
+                filename: fullFilePath,
+            });
 
             // we use "default" since it's a ES module
             return await routeHandler.default(req, res);
         } catch (err) {
-            console.error(err);
+            console.error(err.message);
         }
         return null;
     }
@@ -90,18 +89,16 @@ class CustomNextServer {
         const fullFilePath = path.resolve(this.activeDir, './_next/serverless/', relativeFilePath);
 
         try {
-            const routeHandler = require(fullFilePath);
-            // TODO: isolate
-
-            // const isolatedScript = await this.vmUtils.getVmScript(filePath);
-            // isolatedScript.runInNewContext(this.vmUtils.context, {
-            //     timeout: EXECUTION_TIMEOUT,
-            //     filename: filePath,
-            // });
+            // const routeHandler = require(fullFilePath);
+            const isolatedScript = await this.vmUtils.getVmScript(fullFilePath);
+            const routeHandler = await isolatedScript.runInNewContext(this.vmUtils.context, {
+                timeout: EXECUTION_TIMEOUT,
+                filename: fullFilePath,
+            });
 
             return await routeHandler.render(req, res);
         } catch (err) {
-            console.error(err);
+            console.error(err.message);
         }
         return null;
     }
@@ -125,13 +122,6 @@ class CustomNextServer {
 
     async run(req, res) {
         console.log('running NextServer. process.cwd() =', process.cwd());
-        // console.log('  process.cwd() =', process.cwd());
-        // console.log('  __dirname =', __dirname);
-        // console.log('  __filename =', __filename);
-        // console.log('  module.children =', module.children);
-        // console.log('  module.filename =', module.filename);
-        // console.log('  module.id =', module.id);
-        // console.log('  module.path =', module.path);
 
         req.parsedUrl = new URL('http://localhost:3000' + req.url);
 

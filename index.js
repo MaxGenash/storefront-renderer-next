@@ -39,9 +39,12 @@ async function run() {
 
             const overriddenFs = fsUtils.overrideFs();
             originalFs = fsUtils.originalFs;
-            const overriddenModules = buildMocks({
-                fs: overriddenFs,
-            });
+            const overriddenModules = buildMocks(
+                {
+                    fs: overriddenFs,
+                },
+                activeDir,
+            );
             fsUtils.overrideRequires(overriddenModules);
             originalRequire = fsUtils.originalRequire;
             const overriddenGlobals = {
@@ -64,7 +67,7 @@ async function run() {
             });
             await nextServer.run(req, res);
         } catch (e) {
-            console.dir(e);
+            console.err(e.message);
             res.statusCode = 500;
             res.setHeader('Retry-After', 1);
             res.end();
