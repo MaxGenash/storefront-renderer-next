@@ -2,8 +2,9 @@
 const vm = require('vm');
 const path = require('path');
 const fs = require('fs');
-const { NEXT_SERVER_FILE_PATH } = require('./constants');
 const { PARSING_TIMEOUT } = require('./constants');
+
+// class VmUtils {
 
 function buildMocks(extraMocks) {
     // TODO: mock everything that can lead to stealing / modifying data of other themes
@@ -28,9 +29,9 @@ function buildMocks(extraMocks) {
     };
 }
 
-async function getNextServerScript() {
+async function getVmScript(file) {
     try {
-        const src = await fs.promises.readFile(NEXT_SERVER_FILE_PATH, 'utf8');
+        const src = await fs.promises.readFile(file, 'utf8');
         // const scopedSrc = "'use strict';\nrendererApi => {\n" + src + '\n};';
 
         return new vm.Script(src, { timeout: PARSING_TIMEOUT });
@@ -59,9 +60,10 @@ async function buildScriptContext(modules, globals) {
     context.global = context;
     return vm.createContext(context);
 }
+// }
 
 module.exports = {
     buildMocks,
-    getNextServerScript,
+    getVmScript,
     buildScriptContext,
 };

@@ -2,11 +2,10 @@
 // const { v4: generateId } = require('uuid');
 const http = require('http');
 const { Semaphore } = require('await-semaphore');
-const { NEXT_SERVER_FILE_PATH } = require('./src/constants');
-// const { EXECUTION_TIMEOUT } = require('./src/constants');
-const { getStoreId, getNextConfig } = require('./src/nextServerUtils');
-const { buildMocks, getNextServerScript, buildScriptContext } = require('./src/vmUtils');
+const NextServerUtils = require('./src/nextServerUtils');
+const { buildMocks, getVmScript, buildScriptContext } = require('./src/vmUtils');
 const FsUtils = require('./src/FsUtils');
+const CustomNextServer = require('./src/CustomNextServer');
 
 console.log('running index. process.cwd() =', process.cwd());
 // console.log('  __dirname =', __dirname);
@@ -17,7 +16,6 @@ console.log('running index. process.cwd() =', process.cwd());
 // console.log('  module.path =', module.path);
 
 async function run() {
-    // const nextServerScript = await getNextServerScript();
     // TODO: try avoiding locking the whole request handler
     const semaphore = new Semaphore(1);
     let reqIdsCounter = 0;
@@ -32,10 +30,11 @@ async function run() {
         console.time(`[${reqId}]`);
 
         try {
-            const storeId = getStoreId(req);
+            const storeId = NextServerUtils.getStoreId(req);
             console.log(`storeId: "${storeId}"`);
 
             fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire);
+            const nextServerUtils = new NextServerUtils(fsUtils);
 
             const overriddenFs = fsUtils.overrideFs();
             originalFs = fsUtils.originalFs;
@@ -44,23 +43,31 @@ async function run() {
             });
             fsUtils.overrideRequires(overriddenModules);
             originalRequire = fsUtils.originalRequire;
-            // const overriddenGlobals = {
-            //     require,
-            // };
-            // const context = await buildScriptContext(overriddenModules, overriddenGlobals);
-            // const isolatedNextServer = nextServerScript.runInNewContext(context, {
-            //     timeout: EXECUTION_TIMEOUT,
-            //     filename: 'nextServer.js',
-            // });
-            const isolatedNextServer = require(NEXT_SERVER_FILE_PATH);
+            const overriddenGlobals = {
+                require,
+            };
+            const context = await buildScriptContext(overriddenModules, overriddenGlobals);
+            const vmUtils = {
+                getVmScript,
+                context,
+            };
 
             const activeDir = fsUtils.getActiveThemeDir();
             originalFs.mkdirSync(activeDir, { recursive: true });
-            const nextConfig = await getNextConfig(activeDir);
 
-            await isolatedNextServer({ activeDir, reqId, nextConfig })(req, res);
+            const nextServer = await new CustomNextServer({
+                activeDir,
+                reqId,
+                vmUtils,
+                nextServerUtils,
+                fsUtils,
+            });
+            await nextServer.run(req, res);
         } catch (e) {
             console.dir(e);
+            res.statusCode = 500;
+            res.setHeader('Retry-After', 1);
+            res.end();
         }
 
         if (fsUtils) {
