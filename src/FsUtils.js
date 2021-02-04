@@ -4,7 +4,7 @@ const fs = require('fs');
 const Module = require('module');
 
 class FsUtils {
-    constructor(reqId, storeId, originalFs = fs, originalRequire = Module.prototype.require) {
+    constructor(reqId, storeId, originalFs = fs, originalRequire = Module.prototype.require, isIsolatedDir) {
         this.reqId = reqId;
         this.storeId = storeId;
         this.originalFs = originalFs;
@@ -12,8 +12,11 @@ class FsUtils {
         this.originalRequire = originalRequire;
         this.overridenRequire = Module.prototype.require;
         this.isFsOverriden = false;
-        this.relativeActiveThemeDir = `themes/tmp/${this.reqId}/`;
+        this.isIsolatedDir = isIsolatedDir;
         this.relativeSrcThemeDir = `themes/${this.storeId}/`;
+        this.relativeActiveThemeDir = isIsolatedDir
+            ? `themes/tmp/${this.reqId}/`
+            : this.relativeSrcThemeDir;
     }
 
     getActiveThemeDir() {
@@ -203,6 +206,18 @@ class FsUtils {
         this.isFsOverriden = false;
 
         return this.originalFs;
+    }
+
+    prepareReqDir() {
+        if (this.isIsolatedDir) {
+            this.originalFs.mkdirSync(this.getActiveThemeDir(), { recursive: true });
+        }
+    }
+
+    clearReqDir() {
+        if (this.isIsolatedDir) {
+            this.originalFs.rmdirSync(this.getActiveThemeDir(), { recursive: true });
+        }
     }
 }
 

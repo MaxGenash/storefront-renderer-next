@@ -33,7 +33,8 @@ async function run() {
             const storeId = NextServerUtils.getStoreId(req);
             console.log(`storeId: "${storeId}"`);
 
-            fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire);
+            fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire, true);
+            const activeDir = fsUtils.getActiveThemeDir();
             const nextServerUtils = new NextServerUtils(fsUtils);
 
             const overriddenFs = fsUtils.overrideFs();
@@ -52,8 +53,7 @@ async function run() {
                 context,
             };
 
-            const activeDir = fsUtils.getActiveThemeDir();
-            originalFs.mkdirSync(activeDir, { recursive: true });
+            await fsUtils.prepareReqDir();
 
             const nextServer = await new CustomNextServer({
                 activeDir,
@@ -71,7 +71,7 @@ async function run() {
         }
 
         if (fsUtils) {
-            originalFs.rmdirSync(fsUtils.getActiveThemeDir(), { recursive: true });
+            await fsUtils.clearReqDir();
         }
         console.timeEnd(`[${reqId}]`);
         releaseLock();
