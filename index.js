@@ -3,7 +3,7 @@
 const http = require('http');
 const { Semaphore } = require('await-semaphore');
 const NextServerUtils = require('./src/nextServerUtils');
-const { buildMocks, getVmScript, buildScriptContext } = require('./src/vmUtils');
+const VmUtils = require('./src/vmUtils');
 const FsUtils = require('./src/FsUtils');
 const CustomNextServer = require('./src/CustomNextServer');
 
@@ -16,7 +16,7 @@ console.log('running index. process.cwd() =', process.cwd());
 // console.log('  module.path =', module.path);
 
 async function run() {
-    // TODO: try avoiding locking the whole request handler
+    // TODO: we no longer need semaphore after we stop overriding FS and require since vm2 implements own require and FS
     const semaphore = new Semaphore(1);
     let reqIdsCounter = 0;
     let originalFs;
@@ -34,32 +34,20 @@ async function run() {
             console.log(`storeId: "${storeId}"`);
 
             fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire, true);
-            const activeDir = fsUtils.getActiveThemeDir();
-            const nextServerUtils = new NextServerUtils(fsUtils);
+            // TODO: we no longer need to override FS and require since vm2 implements own require and FS
+            fsUtils.overrideFs();
 
-            const overriddenFs = fsUtils.overrideFs();
-            originalFs = fsUtils.originalFs;
-            const overriddenModules = buildMocks(
-                {
-                    fs: overriddenFs,
-                },
-                activeDir,
-            );
-            fsUtils.overrideRequires(overriddenModules);
+            const nextServerUtils = new NextServerUtils(fsUtils);
+            const vmUtils = new VmUtils(fsUtils);
+
+            // Build mocks and override modules
+            const mocks = vmUtils.buildMocks();
+            fsUtils.overrideRequires(mocks);
             originalRequire = fsUtils.originalRequire;
-            const overriddenGlobals = {
-                require,
-            };
-            const context = await buildScriptContext(overriddenModules, overriddenGlobals);
-            const vmUtils = {
-                getVmScript,
-                context,
-            };
 
             await fsUtils.prepareReqDir();
 
             const nextServer = await new CustomNextServer({
-                activeDir,
                 reqId,
                 vmUtils,
                 nextServerUtils,
@@ -67,9 +55,9 @@ async function run() {
             });
             await nextServer.run(req, res);
         } catch (e) {
-            console.err(e.message);
+            console.error(e.message);
             res.statusCode = 500;
-            res.setHeader('Retry-After', 1);
+            // res.setHeader('Retry-After', 1);
             res.end();
         }
 
@@ -89,4 +77,8 @@ run();
 
 process.on('uncaughtException', (err) => {
     console.error('Unhandled exception: ', err);
+});
+
+process.on('unhandledRejection', (err) => {
+    console.error('Unhandled rejection: ', err);
 });

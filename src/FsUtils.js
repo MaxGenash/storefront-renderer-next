@@ -209,6 +209,7 @@ class FsUtils {
     }
 
     prepareReqDir() {
+        // TODO: keeping the data in memory will be more effective
         if (this.isIsolatedDir) {
             this.originalFs.mkdirSync(this.getActiveThemeDir(), { recursive: true });
         }

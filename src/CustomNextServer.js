@@ -3,17 +3,17 @@
 const process = require('process');
 const path = require('path');
 const fs = require('fs');
-const { EXECUTION_TIMEOUT } = require('./constants');
 
 // const createNextServer = require('next');
 // const { loadComponents } = require('next/dist/next-server/server/load-components.js');
 
 class CustomNextServer {
-    constructor({ activeDir, nextServerUtils, vmUtils, fsUtils }) {
-        this.activeDir = activeDir;
+    constructor({ nextServerUtils, vmUtils, fsUtils }) {
         this.nextServerUtils = nextServerUtils;
         this.vmUtils = vmUtils;
         this.fsUtils = fsUtils;
+
+        this.activeDir = fsUtils.getActiveThemeDir();
 
         return this.init();
     }
@@ -61,14 +61,9 @@ class CustomNextServer {
         const fullFilePath = path.resolve(this.activeDir, './_next/serverless/', relativeFilePath);
 
         try {
-            // const routeHandler = require(fullFilePath);
-            const isolatedScript = await this.vmUtils.getVmScript(fullFilePath);
-            const routeHandler = await isolatedScript.runInNewContext(this.vmUtils.context, {
-                timeout: EXECUTION_TIMEOUT,
-                filename: fullFilePath,
-            });
+            const routeHandler = await this.vmUtils.runInIsolatedVm(fullFilePath);
 
-            // we use "default" since it's a ES module
+            // we use "default" since it's an ES module
             return await routeHandler.default(req, res);
         } catch (err) {
             console.error(err.message);
@@ -89,16 +84,11 @@ class CustomNextServer {
         const fullFilePath = path.resolve(this.activeDir, './_next/serverless/', relativeFilePath);
 
         try {
-            // const routeHandler = require(fullFilePath);
-            const isolatedScript = await this.vmUtils.getVmScript(fullFilePath);
-            const routeHandler = await isolatedScript.runInNewContext(this.vmUtils.context, {
-                timeout: EXECUTION_TIMEOUT,
-                filename: fullFilePath,
-            });
+            const routeHandler = await this.vmUtils.runInIsolatedVm(fullFilePath);
 
             return await routeHandler.render(req, res);
         } catch (err) {
-            console.error(err.message);
+            console.error(err);
         }
         return null;
     }

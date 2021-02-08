@@ -1,72 +1,105 @@
-/* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus */
-const vm = require('vm');
+/* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus,prefer-object-spread */
+const jsEvents = require('jsEvents');
 const path = require('path');
 const fs = require('fs');
-const { PARSING_TIMEOUT } = require('./constants');
+const { NodeVM, VMScript } = require('vm2');
+const { EXECUTION_TIMEOUT } = require('./constants');
 
-// class VmUtils {
+class VmUtils {
+    constructor(fsUtils) {
+        this.fsUtils = fsUtils;
+        this.overriddenModules = {};
+    }
 
-function buildMocks(extraMocks, activeThemeDir) {
-    // TODO: mock everything that can lead to stealing / modifying data of other themes
-    return {
-        process: {
-            ...process,
-            cwd: () => activeThemeDir,
-            chdir: () => {
-                throw new Error('chdir is restricted');
+    buildMocks() {
+        // TODO: mock everything that can lead to stealing / modifying data of other themes
+        const activeThemeDir = this.fsUtils.getActiveThemeDir();
+        this.overriddenModules = {
+            // Override events to fix https://github.com/patriksimek/vm2/issues/216#issuecomment-528866482
+            events: jsEvents,
+            process: {
+                ...process,
+                cwd: () => activeThemeDir,
+                chdir: () => {
+                    throw new Error('chdir is restricted');
+                },
             },
-        },
-        path: {
-            ...path,
-            resolve: (...paths) => {
-                const result = path.join(activeThemeDir, ...paths);
-                // console.log('activeThemeDir =');
-                // console.log('called path.resolve with', paths, '. Result =', result);
-                return result;
+            path: {
+                ...path,
+                resolve: (...paths) => {
+                    const result = path.join(activeThemeDir, ...paths);
+                    // console.log('activeThemeDir =');
+                    // console.log('called path.resolve with', paths, '. Result =', result);
+                    return result;
+                },
             },
-        },
-        ...extraMocks,
-    };
-}
+            fs: this.fsUtils.overridenFs,
+        };
 
-async function getVmScript(file) {
-    try {
-        const src = await fs.promises.readFile(file, 'utf8');
-        // const scopedSrc = "'use strict';\nrendererApi => {\n" + src + '\n};';
+        return this.overriddenModules;
+    }
 
-        return new vm.Script(src, { timeout: PARSING_TIMEOUT });
-    } catch (e) {
-        console.error(e);
-        process.exit(1);
+    async getVmScript(filePath) {
+        const src = await fs.promises.readFile(filePath, 'utf8');
+
+        // return new vm.Script(src, { timeout: PARSING_TIMEOUT });
+        return new VMScript(src, { filename: filePath });
+    }
+
+    async buildScriptContext() {
+        const context = {
+            Buffer,
+            URL,
+            URLSearchParams,
+            TextDecoder,
+            TextEncoder,
+            console,
+            queueMicrotask,
+            // TODO: need to limit timers
+            setTimeout,
+            setImmediate,
+            setInterval,
+            clearTimeout,
+            clearImmediate,
+            clearInterval,
+            __dirname: this.fsUtils.getActiveThemeDir(),
+            module: {},
+            process: this.overriddenModules.process,
+            require: this.fsUtils.overridenRequire,
+        };
+        context.module.require = context.require;
+
+        return Object.freeze(context);
+    }
+
+    async runInIsolatedVm(filePath) {
+        // return require(filePath);
+
+        // const isolatedScript = await this.getVmScript(fullFilePath);
+        // return isolatedScript.runInNewContext(overriddenGlobals, {
+        //     timeout: EXECUTION_TIMEOUT,
+        //     filename: filePath,
+        // });
+
+        const overriddenGlobals = await this.buildScriptContext();
+
+        const vm = new NodeVM({
+            timeout: EXECUTION_TIMEOUT,
+            console: 'inherit',
+            sandbox: overriddenGlobals,
+            require: {
+                // external: true,
+                // builtin: ['stream', 'http', 'https', 'url', 'zlib', 'crypto'],
+                builtin: ['*'],
+                root: this.fsUtils.getActiveThemeDir(),
+                mock: this.overriddenModules,
+                // context: 'host',
+                context: 'sandbox',
+            },
+        });
+        const isolatedScript = await this.getVmScript(filePath);
+        return vm.run(isolatedScript);
     }
 }
 
-async function buildScriptContext(modules, globals) {
-    // const activeThemeDir = getActiveThemeDir(storeId);
-
-    // TODO: add Object.freeze to the provided context fields to avoid hacking
-
-    const context = {
-        // ...global,
-        console,
-        // __dirname: activeThemeDir,
-        module: {},
-        process: modules.process,
-        Buffer,
-        URL,
-        clearTimeout,
-        setTimeout,
-        ...globals,
-    };
-    // context.module.require = context.require;
-
-    context.global = context;
-    return vm.createContext(context);
-}
-// }
-
-module.exports = {
-    buildMocks,
-    getVmScript,
-    buildScriptContext,
-};
+module.exports = VmUtils;
