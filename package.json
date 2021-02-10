@@ -18,8 +18,7 @@
     "react-dom": "^16.14.0",
     "next": "file:/Users/max.henash/projects/next.js/packages/next",
     "uuid": "^8.3.2",
-    "vm2": "MaxGenash/vm2#bug_restricted_modifications_of_inherited_objects",
-    "jsEvents": "npm:events@^3.2.0",
+    "isolated-vm": "^3.3.10",
     "yarn": "^1.22.10"
   },
   "devDependencies": {

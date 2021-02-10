@@ -86,7 +86,7 @@ class CustomNextServer {
         try {
             const routeHandler = await this.vmUtils.runInIsolatedVm(fullFilePath);
 
-            return await routeHandler.render(req, res);
+            return await routeHandler.getSync('render').apply(null, [req, res]);
         } catch (err) {
             console.error(err);
         }

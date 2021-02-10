@@ -26,6 +26,7 @@ async function run() {
 
         const reqId = ++reqIdsCounter;
         let fsUtils;
+        let vmUtils;
         console.log(`\n[${reqId}] req.url = `, req.url);
         console.time(`[${reqId}]`);
 
@@ -38,7 +39,7 @@ async function run() {
             fsUtils.overrideFs();
 
             const nextServerUtils = new NextServerUtils(fsUtils);
-            const vmUtils = new VmUtils(fsUtils);
+            vmUtils = new VmUtils(fsUtils);
 
             // Build mocks and override modules
             const mocks = vmUtils.buildMocks();
@@ -63,6 +64,9 @@ async function run() {
 
         if (fsUtils) {
             await fsUtils.clearReqDir();
+        }
+        if (vmUtils) {
+            await vmUtils.clear();
         }
         console.timeEnd(`[${reqId}]`);
         releaseLock();

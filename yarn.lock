@@ -1725,6 +1725,11 @@ isobject@^2.0.0:
   dependencies:
     isarray "1.0.0"
 
+isolated-vm@^3.3.10:
+  version "3.3.10"
+  resolved "https://registry.yarnpkg.com/isolated-vm/-/isolated-vm-3.3.10.tgz#18a8caef536ecc6bf685a00fbd526acdd06e75ef"
+  integrity sha512-COaInZ05+9lKCeJtsqUTGDdvGRHVWkhZAQr+vExVTSyVWUNoulXJop46zSIPPHSb78uscHVrpzCYhBYSP+wYDQ==
+
 jest-worker@24.9.0:
   version "24.9.0"
   resolved "https://registry.yarnpkg.com/jest-worker/-/jest-worker-24.9.0.tgz#5dbfdb5b2d322e98567898238a9697bcce67b3e5"
@@ -3179,10 +3184,6 @@ vm-browserify@1.1.2, vm-browserify@^1.0.1:
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/vm-browserify/-/vm-browserify-1.1.2.tgz#78641c488b8e6ca91a75f511e7a3b32a86e5dda0"
   integrity sha512-2ham8XPWTONajOR0ohOKOHXkm3+gaBmGut3SRuu75xLd/RRaY6vqgh8NBYYk7+RW3u5AtzPQZG8F10LHkl0lAQ==
-
-vm2@MaxGenash/vm2#bug_restricted_modifications_of_inherited_objects:
-  version "3.9.2"
-  resolved "https://codeload.github.com/MaxGenash/vm2/tar.gz/99f81fb5a46078fe6b7ede2dc0a9a19735c848c6"
 
 watchpack@2.0.0-beta.13:
   version "2.0.0-beta.13"

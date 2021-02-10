@@ -1,14 +1,16 @@
 /* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus,prefer-object-spread */
-const jsEvents = require('jsEvents');
 const path = require('path');
 const fs = require('fs');
-const { NodeVM, VMScript } = require('vm2');
+const ivm = require('isolated-vm');
 const { EXECUTION_TIMEOUT } = require('./constants');
 
 class VmUtils {
     constructor(fsUtils) {
         this.fsUtils = fsUtils;
         this.overriddenModules = {};
+        this.isolate = new ivm.Isolate({
+            memoryLimit: 512,
+        });
     }
 
     buildMocks() {
@@ -16,7 +18,6 @@ class VmUtils {
         const activeThemeDir = this.fsUtils.getActiveThemeDir();
         this.overriddenModules = {
             // Override events to fix https://github.com/patriksimek/vm2/issues/216#issuecomment-528866482
-            events: jsEvents,
             process: {
                 ...process,
                 cwd: () => activeThemeDir,
@@ -42,26 +43,25 @@ class VmUtils {
     async getVmScript(filePath) {
         const src = await fs.promises.readFile(filePath, 'utf8');
 
-        // return new vm.Script(src, { timeout: PARSING_TIMEOUT });
-        return new VMScript(src, { filename: filePath });
+        return this.isolate.compileModule(src, { filename: 'file:///' + filePath });
     }
 
     async buildScriptContext() {
         const context = {
-            Buffer,
-            URL,
-            URLSearchParams,
-            TextDecoder,
-            TextEncoder,
+            // Buffer,
+            // URL,
+            // URLSearchParams,
+            // TextDecoder,
+            // TextEncoder,
             console,
-            queueMicrotask,
+            // queueMicrotask,
             // TODO: need to limit timers
-            setTimeout,
-            setImmediate,
-            setInterval,
-            clearTimeout,
-            clearImmediate,
-            clearInterval,
+            // setTimeout,
+            // setImmediate,
+            // setInterval,
+            // clearTimeout,
+            // clearImmediate,
+            // clearInterval,
             __dirname: this.fsUtils.getActiveThemeDir(),
             module: {},
             process: this.overriddenModules.process,
@@ -83,22 +83,30 @@ class VmUtils {
 
         const overriddenGlobals = await this.buildScriptContext();
 
-        const vm = new NodeVM({
-            timeout: EXECUTION_TIMEOUT,
-            console: 'inherit',
-            sandbox: overriddenGlobals,
-            require: {
-                // external: true,
-                // builtin: ['stream', 'http', 'https', 'url', 'zlib', 'crypto'],
-                builtin: ['*'],
-                root: this.fsUtils.getActiveThemeDir(),
-                mock: this.overriddenModules,
-                // context: 'host',
-                context: 'sandbox',
-            },
+        const context = await this.isolate.createContext();
+        const jail = context.global;
+
+        for (const [key, value] of Object.entries(overriddenGlobals)) {
+            jail.setSync(key, value, { reference: true });
+        }
+
+        jail.setSync('global', jail.derefInto());
+
+        const isolatedModule = await this.getVmScript(filePath);
+        await isolatedModule.instantiate(context, (specifier, referrer) => {
+            console.log(`called resolveCallback with ("${specifier}", "${referrer}")`);
+            return require(specifier);
         });
-        const isolatedScript = await this.getVmScript(filePath);
-        return vm.run(isolatedScript);
+
+        const res = await isolatedModule.evaluate({
+            timeout: EXECUTION_TIMEOUT,
+        });
+        const reference = isolatedModule.namespace;
+        return reference;
+    }
+
+    clear() {
+        return this.isolate.dispose();
     }
 }
 
