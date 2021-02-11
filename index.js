@@ -1,4 +1,4 @@
-/* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus */
+/* eslint-disable no-process-exit,global-require,import/no-dynamic-require,no-param-reassign,no-underscore-dangle,no-plusplus,no-unused-expressions */
 // const { v4: generateId } = require('uuid');
 const http = require('http');
 const { Semaphore } = require('await-semaphore');
@@ -7,25 +7,18 @@ const VmUtils = require('./src/vmUtils');
 const FsUtils = require('./src/FsUtils');
 const CustomNextServer = require('./src/CustomNextServer');
 
-console.log('running index. process.cwd() =', process.cwd());
-// console.log('  __dirname =', __dirname);
-// console.log('  __filename =', __filename);
-// console.log('  module.children =', module.children);
-// console.log('  module.filename =', module.filename);
-// console.log('  module.id =', module.id);
-// console.log('  module.path =', module.path);
-
 async function run() {
-    // TODO: we no longer need semaphore after we stop overriding FS and require since vm2 implements own require and FS
+    // TODO: semaphore is used to avoid other requests influencing handling time
     const semaphore = new Semaphore(1);
     let reqIdsCounter = 0;
-    let originalFs;
-    let originalRequire;
+    let activeReqNumber = 0;
     const httpServer = new http.Server(async (req, res) => {
         const releaseLock = await semaphore.acquire();
 
         const reqId = ++reqIdsCounter;
+        ++activeReqNumber;
         let fsUtils;
+        let vmUtils;
         console.log(`\n[${reqId}] req.url = `, req.url);
         console.time(`[${reqId}]`);
 
@@ -33,24 +26,13 @@ async function run() {
             const storeId = NextServerUtils.getStoreId(req);
             console.log(`storeId: "${storeId}"`);
 
-            fsUtils = new FsUtils(reqId, storeId, originalFs, originalRequire, true);
-            // TODO: we no longer need to override FS and require since vm2 implements own require and FS
-            fsUtils.overrideFs();
-
-            const nextServerUtils = new NextServerUtils(fsUtils);
-            const vmUtils = new VmUtils(fsUtils);
-
-            // Build mocks and override modules
-            const mocks = vmUtils.buildMocks();
-            fsUtils.overrideRequires(mocks);
-            originalRequire = fsUtils.originalRequire;
-
-            await fsUtils.prepareReqDir();
+            fsUtils = new FsUtils(reqId, storeId, true);
+            vmUtils = new VmUtils(fsUtils, 3000); // TODO: pass (3000 + activeReqNumber)
 
             const nextServer = await new CustomNextServer({
                 reqId,
                 vmUtils,
-                nextServerUtils,
+                nextServerUtils: new NextServerUtils(fsUtils),
                 fsUtils,
             });
             await nextServer.run(req, res);
@@ -61,16 +43,18 @@ async function run() {
             res.end();
         }
 
-        if (fsUtils) {
-            await fsUtils.clearReqDir();
-        }
+        if (fsUtils) await fsUtils.clear();
+        if (vmUtils) await vmUtils.clear();
+
         console.timeEnd(`[${reqId}]`);
         releaseLock();
+        // eslint-disable-next-line no-unused-vars
+        --activeReqNumber;
     });
 
-    httpServer.listen(3000, (err) => {
+    httpServer.listen(2222, (err) => {
         if (err) throw err;
-        console.log('Listening on http://localhost:3000');
+        console.log('Listening on http://localhost:2222');
     });
 }
 run();

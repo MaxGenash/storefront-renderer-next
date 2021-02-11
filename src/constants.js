@@ -1,5 +1,5 @@
-const PARSING_TIMEOUT = 1000;
-const EXECUTION_TIMEOUT = 5000;
+const PARSING_TIMEOUT = 5 * 1000;
+const EXECUTION_TIMEOUT = 30 * 1000;
 
 module.exports = {
     PARSING_TIMEOUT,

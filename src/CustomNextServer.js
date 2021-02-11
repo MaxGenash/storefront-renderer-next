@@ -2,7 +2,13 @@
 
 const process = require('process');
 const path = require('path');
+const http = require('http');
 const fs = require('fs');
+const httpProxy = require('http-proxy');
+
+const proxy = httpProxy.createProxyServer({
+    changeOrigin: true,
+});
 
 // const createNextServer = require('next');
 // const { loadComponents } = require('next/dist/next-server/server/load-components.js');
@@ -13,7 +19,7 @@ class CustomNextServer {
         this.vmUtils = vmUtils;
         this.fsUtils = fsUtils;
 
-        this.activeDir = fsUtils.getActiveThemeDir();
+        this.activeDir = fsUtils.fullActiveThemeDir;
 
         return this.init();
     }
@@ -73,20 +79,32 @@ class CustomNextServer {
 
     async handlePageReq(req, res) {
         // TODO: handle dynamic routes
-        let relativeFilePath = this.pagesManifest[req.parsedUrl.pathname];
+        let filePath = this.pagesManifest[req.parsedUrl.pathname];
         // TODO tmp check
-        if (!relativeFilePath && req.parsedUrl.pathname.includes('/product')) {
-            relativeFilePath = 'pages/product/[slug].js';
+        if (!filePath && req.parsedUrl.pathname.includes('/product')) {
+            filePath = 'pages/product/[slug].js';
         }
-        if (!relativeFilePath) {
+        if (!filePath) {
             return;
         }
-        const fullFilePath = path.resolve(this.activeDir, './_next/serverless/', relativeFilePath);
-
         try {
-            const routeHandler = await this.vmUtils.runInIsolatedVm(fullFilePath);
+            const relativeFilePath = './_next/serverless/' + filePath;
+            await this.vmUtils.runInIsolatedVm(relativeFilePath);
 
-            return await routeHandler.render(req, res);
+            proxy.web(req, res, { target: `http://localhost:${this.vmUtils.containerPort}` });
+
+            return new Promise((resolve, reject) => {
+                proxy.on('error', (err) => {
+                    console.error(err);
+                    reject(err);
+                });
+                proxy.on('proxyRes', (proxyRes) => {
+                    console.log('done');
+                    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+                    proxyRes.pipe(res, { end: true });
+                    resolve();
+                });
+            });
         } catch (err) {
             console.error(err);
         }
@@ -96,7 +114,7 @@ class CustomNextServer {
     // TODO: We don't need it when deployed because there will be CDN for files from public directory
     async handleStaticFiles(req, res) {
         const fileDir = path.resolve(
-            this.fsUtils.getSrcThemeDir(),
+            this.fsUtils.fullSrcThemeDir,
             'public',
             '.' + req.parsedUrl.pathname,
         );
@@ -132,7 +150,10 @@ class CustomNextServer {
 
         if (!res.finished) {
             res.statusCode = 404;
-            const page404Path = path.resolve(this.activeDir, './_next/serverless/pages/404.html');
+            const page404Path = path.resolve(
+                this.fsUtils.fullSrcThemeDir,
+                './_next/serverless/pages/404.html',
+            );
             const pageFile = await fs.promises.readFile(page404Path);
             res.end(pageFile);
         }
