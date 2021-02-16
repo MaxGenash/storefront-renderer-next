@@ -5,6 +5,11 @@ const fs = require('fs');
 const { NodeVM, VMScript } = require('vm2');
 const { EXECUTION_TIMEOUT } = require('./constants');
 
+let sumEvalTime = 0;
+let evalCounter = 0;
+let minEvalTime = 10000000;
+let maxEvalTime = 0;
+
 class VmUtils {
     constructor(fsUtils) {
         this.fsUtils = fsUtils;
@@ -73,14 +78,17 @@ class VmUtils {
     }
 
     async runInIsolatedVm(filePath) {
-        // return require(filePath);
+        ++evalCounter;
+        const evalStart = Date.now();
+
+        // const result = this.fsUtils.originalRequire(filePath);
 
         // const isolatedScript = await this.getVmScript(fullFilePath);
-        // return isolatedScript.runInNewContext(overriddenGlobals, {
+        // const result = isolatedScript.runInNewContext(overriddenGlobals, {
         //     timeout: EXECUTION_TIMEOUT,
         //     filename: filePath,
         // });
-
+        //
         const overriddenGlobals = await this.buildScriptContext();
 
         const vm = new NodeVM({
@@ -98,7 +106,19 @@ class VmUtils {
             },
         });
         const isolatedScript = await this.getVmScript(filePath);
-        return vm.run(isolatedScript);
+        const result = await vm.run(isolatedScript);
+
+        const evalDuration = Date.now() - evalStart;
+        console.log(`vm2.run №${evalCounter}. Duration = ${evalDuration} ms`);
+        sumEvalTime += evalDuration;
+        minEvalTime = Math.min(evalDuration, minEvalTime);
+        maxEvalTime = Math.max(evalDuration, maxEvalTime);
+        console.log(
+            // eslint-disable-next-line prettier/prettier
+            `avgEvalDuration= ${sumEvalTime/evalCounter} ms, minEvalTime = ${minEvalTime} ms, maxEvalTime = ${maxEvalTime} ms`
+        );
+
+        return result;
     }
 }
 
